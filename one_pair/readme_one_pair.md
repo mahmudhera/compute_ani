@@ -1,0 +1,1 @@
+In this folder, I am investigating estimation of ANI between a pair of sequence files.
