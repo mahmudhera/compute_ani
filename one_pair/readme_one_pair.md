@@ -1,8 +1,23 @@
 In this folder, I am investigating estimation of ANI between a pair of sequence files.
 
-Implemented a simple FAISS index in Python. Using this index, for 100K length genome, I observe the following behaviors when querying kmers from a mutated sequence (during the queries, I am recording number of kmers with 0 mutations):
+Comparisons between four index choices: (10K length string is tested, and 10K kmers are queried)
 
-- Flat Index: index building is quick. counts match exactly. time taken for querying is 311 seconds
-- HNSW: index building is slow. There is 0.5% deviation. time taken for querying is 10.52 seconds
+Index Build times (sec):
+  BKTree: 0.13s
+  HashNeighbor: 83.15s
+  Trie: 0.08s
+  FAISS-HNSW: 0.92s
 
-These numbers are much slower than just taking a set intersection! Therefore, we must come have good justification of doing all these extra work. Lets see.
+✅ Accuracy Comparison:
+Distance |   True |     BKTree | HashNeighb |       Trie | FAISS-HNSW
+----------------------------------------------------------------------
+       0 |   8118 |       8118 |       8118 |       8118 |       8118 | 
+       1 |   1699 |       1699 |       1699 |       1699 |       1699 | 
+       2 |    151 |        151 |        151 |        151 |        151 | 
+       3 |     12 |         12 |          0 |         12 |         12 | 
+
+⏱️ Query times (sec):
+  BKTree: 122.63s
+  HashNeighbor: 4.70s
+  Trie: 91.38s
+  FAISS-HNSW: 0.33s

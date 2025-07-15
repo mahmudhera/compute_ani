@@ -1,89 +1,139 @@
-from kmer_index import KmerIndex
 import random
-from tqdm import tqdm
+import argparse
 import time
+from collections import Counter, defaultdict
+from tqdm import tqdm
+import numpy as np
 
-def create_random_string(length: int) -> str:
-    """Generate a random DNA string of given length."""
-    import random
-    return ''.join(random.choice('ACGT') for _ in range(length))
+from bk_tree_index import BKTree
+from hash_neighbor_index import HashNeighborIndex
+from faiss_index import FaissKmerIndex
 
-def extract_kmers(sequence: str, k: int) -> list:
-    """Extract all k-mers from a given sequence."""
-    return [sequence[i:i + k] for i in range(len(sequence) - k + 1)]
 
-# mutate a string for a fixed subst rate. record the mutation choices. return mutated string, and a list of integers, whose i-th index contain number of kmers with i mutations
-def mutate_string(sequence: str, subst_rate: float, k) -> tuple:
-    """Mutate a DNA sequence with a given substitution rate."""
-    bases = 'ACGT'
-    mutation_choices = []
-    mutated_sequence = []
+# Import the index classes
+# Make sure the four index classes are available from separate files or copy-paste above
 
-    for base in sequence:
-        if random.random() < subst_rate:
-            new_base = random.choice(bases.replace(base, ''))  # choose a different base
-            mutated_sequence.append(new_base)
-            mutation_choices.append(1)  # record a mutation
-        else:
-            mutated_sequence.append(base)
-            mutation_choices.append(0)  # no mutation
+# --- Utility functions ---
 
-    mutated_sequence = ''.join(mutated_sequence)
+def random_dna(length):
+    return ''.join(random.choices('ACGT', k=length))
+
+def get_kmers(seq, k):
+    return [seq[i:i+k] for i in range(len(seq) - k + 1)]
+
+def mutate(seq, rate):
+    seq = list(seq)
+    for i in range(len(seq)):
+        if random.random() < rate:
+            orig = seq[i]
+            alt = random.choice([b for b in 'ACGT' if b != orig])
+            seq[i] = alt
+    return ''.join(seq)
+
+def hamming(s1, s2):
+    return sum(a != b for a, b in zip(s1, s2))
+
+# --- Benchmark script ---
+
+def main(args):
+    random.seed(42)
+
+    print(f"Generating random DNA sequence of length {args.length}...")
+    original = random_dna(args.length)
+    original_kmers = get_kmers(original, args.k)
+
+    print(f"Building indexes with {len(original_kmers)} k-mers...")
+    build_times = {}
+    indexes = {}
+
+    # BK-tree
+    start = time.time()
+    bk = BKTree()
+    bk.build(original_kmers)
+    build_times["BKTree"] = time.time() - start
+    indexes["BKTree"] = bk
+    print("BKTree built with {} nodes".format(len(bk.root.children)))
+
+    # Hash+neighbor
+    start = time.time()
+    hn = HashNeighborIndex(k=args.k, d=2)
+    hn.build(original_kmers)
+    build_times["HashNeighbor"] = time.time() - start
+    indexes["HashNeighbor"] = hn
+    print("HashNeighbor built with {} entries".format(len(hn.table)))
     
-    num_kmers_with_mutations = [0 for _ in range(k + 1)]
-    for i in range(len(mutated_sequence) - k + 1):
-        num_mutations_this_kmer = sum(mutation_choices[i:i + k])
-        num_kmers_with_mutations[num_mutations_this_kmer] += 1
-        
-    return mutated_sequence, num_kmers_with_mutations
-    
+
+    # Trie
+    from trie_index import TrieIndex
+    start = time.time()
+    trie = TrieIndex()
+    trie.build(original_kmers)
+    build_times["Trie"] = time.time() - start
+    indexes["Trie"] = trie
+    print("Trie built with {} nodes".format(len(trie.root.children)))
+
+    # FAISS
+    start = time.time()
+    faiss_index = FaissKmerIndex(args.k, use_hnsw=True)
+    faiss_index.build(original_kmers)
+    build_times["FAISS-HNSW"] = time.time() - start
+    indexes["FAISS-HNSW"] = faiss_index
+    print("FAISS-HNSW built with {} k-mers".format(len(faiss_index.kmer_to_id)))
+
+    print("Build times (sec):")
+    for name, t in build_times.items():
+        print(f"  {name}: {t:.2f}s")
+
+    print(f"\nMutating string with substitution rate {args.sub_rate}...")
+    mutated = mutate(original, args.sub_rate)
+    mutated_kmers = get_kmers(mutated, args.k)
+
+    print("Calculating ground truth Hamming distances...")
+    ground_truth_counts = Counter()
+    gt_distances = []
+
+    for orig_kmer, mut_kmer in zip(original_kmers, mutated_kmers):
+        dist = hamming(orig_kmer, mut_kmer)
+        gt_distances.append(dist)
+        ground_truth_counts[dist] += 1
+
+    print("\nQuerying all mutated k-mers against each index...")
+    results = {}
+
+    for name, index in indexes.items():
+        print(f"Querying with {name}...")
+        query_start = time.time()
+        recovered_counts = Counter()
+
+        for mut_kmer in tqdm(mutated_kmers):
+            dist = index.query(mut_kmer)
+            recovered_counts[dist] += 1
+
+        query_time = time.time() - query_start
+        results[name] = {
+            "query_time": query_time,
+            "counts": recovered_counts
+        }
+
+    print("\n✅ Accuracy Comparison:")
+    print(f"{'Distance':>8} | {'True':>6} | " + " | ".join([f"{name[:10]:>10}" for name in results]))
+    print("-" * 70)
+
+    max_d = max(ground_truth_counts.keys())
+    for d in range(max_d + 1):
+        line = f"{d:>8} | {ground_truth_counts[d]:>6} | "
+        for name in results:
+            line += f"{results[name]['counts'][d]:>10} | "
+        print(line)
+
+    print("\n⏱️ Query times (sec):")
+    for name, r in results.items():
+        print(f"  {name}: {r['query_time']:.2f}s")
 
 if __name__ == "__main__":
-    
-    # create a random DNA sequence of length 100K
-    random_sequence = create_random_string(100000)
-    
-    # mutate the sequence with a substitution rate of 0.01
-    subst_rate = 0.01
-    mutated_sequence, num_kmers_with_mutations = mutate_string(random_sequence, subst_rate, 31)
-    print(f"Original sequence length: {len(random_sequence)}")
-    print(f"Mutated sequence length: {len(mutated_sequence)}")
-    print(f"Number of k-mers with 0 mutations: {num_kmers_with_mutations[0]}")
-    print(f"Number of k-mers with 1 mutation: {num_kmers_with_mutations[1]}")
-    print(f"Total kmers with mutations: {sum(num_kmers_with_mutations)}")
-    
-    
-    # extract k-mers of length 31 from the random sequence
-    k = 31
-    kmers = extract_kmers(random_sequence, k)
-    
-    # Initialize the KmerIndex with k and Flat index type
-    index = KmerIndex(k, faiss_index_type="HNSW32")
-
-    # Insert k-mers into the index
-    for kmer in kmers:
-        index.insert(kmer)
-        
-    print(f"Inserted {index.num_kmers} k-mers into the index.")
-    
-    # query all kmers in the mutated sequence
-    start_time = time.time()
-    mutated_kmers = extract_kmers(mutated_sequence, k)
-    num_kmers_0_mutations = 0
-    for kmer in tqdm(mutated_kmers, desc="Querying mutated kmers"):
-        _, estimated_hd = index.query(kmer)
-        if estimated_hd == 0:
-            num_kmers_0_mutations += 1
-    end_time = time.time()
-            
-    print(f"Number of k-mers with 0 mutations in the mutated sequence (found using index): {num_kmers_0_mutations}")
-    print(f"Time taken to query mutated k-mers: {end_time - start_time:.2f} seconds")
-    
-    kmer_set_orig_string = set(kmers)
-    kmer_set_mutated_string = set(mutated_kmers)
-    start_time = time.time()
-    num_kmers_0_mutations_set = len(kmer_set_orig_string.intersection(kmer_set_mutated_string))
-    end_time = time.time()
-    print(f"Number of k-mers with 0 mutations in the mutated sequence (found using set intersection): {num_kmers_0_mutations_set}")
-    print(f"Time taken to find intersection using sets: {end_time - start_time:.2f} seconds")
-            
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--length", type=int, required=True, help="Length of random DNA sequence")
+    parser.add_argument("--k", type=int, required=True, help="k-mer size")
+    parser.add_argument("--sub_rate", type=float, required=True, help="Substitution rate (0-1)")
+    args = parser.parse_args()
+    main(args)
