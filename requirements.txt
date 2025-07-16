@@ -1,0 +1,6 @@
+faiss-cpu
+numpy
+scipy
+scikit-learn
+pandas
+biopython
