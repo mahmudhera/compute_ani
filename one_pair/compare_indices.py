@@ -9,29 +9,10 @@ from bk_tree_index import BKTree
 from hash_neighbor_index import HashNeighborIndex
 from faiss_index import FaissKmerIndex
 
+from utils import random_dna, get_kmers, mutate, hamming
 
 # Import the index classes
 # Make sure the four index classes are available from separate files or copy-paste above
-
-# --- Utility functions ---
-
-def random_dna(length):
-    return ''.join(random.choices('ACGT', k=length))
-
-def get_kmers(seq, k):
-    return [seq[i:i+k] for i in range(len(seq) - k + 1)]
-
-def mutate(seq, rate):
-    seq = list(seq)
-    for i in range(len(seq)):
-        if random.random() < rate:
-            orig = seq[i]
-            alt = random.choice([b for b in 'ACGT' if b != orig])
-            seq[i] = alt
-    return ''.join(seq)
-
-def hamming(s1, s2):
-    return sum(a != b for a, b in zip(s1, s2))
 
 # --- Benchmark script ---
 
