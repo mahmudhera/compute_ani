@@ -115,7 +115,7 @@ def main(args):
             "counts": recovered_counts
         }
 
-    print("\n✅ Accuracy Comparison:")
+    print("\n Accuracy Comparison:")
     print(f"{'Distance':>8} | {'True':>6} | " + " | ".join([f"{name[:10]:>10}" for name in results]))
     print("-" * 70)
 
@@ -126,7 +126,7 @@ def main(args):
             line += f"{results[name]['counts'][d]:>10} | "
         print(line)
 
-    print("\n⏱️ Query times (sec):")
+    print("\n Query times (sec):")
     for name, r in results.items():
         print(f"  {name}: {r['query_time']:.2f}s")
 

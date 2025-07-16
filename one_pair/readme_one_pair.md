@@ -8,7 +8,7 @@ Index Build times (sec):
   Trie: 0.08s
   FAISS-HNSW: 0.92s
 
-✅ Accuracy Comparison:
+Accuracy Comparison:
 Distance |   True |     BKTree | HashNeighb |       Trie | FAISS-HNSW
 ----------------------------------------------------------------------
        0 |   8118 |       8118 |       8118 |       8118 |       8118 | 
@@ -16,7 +16,7 @@ Distance |   True |     BKTree | HashNeighb |       Trie | FAISS-HNSW
        2 |    151 |        151 |        151 |        151 |        151 | 
        3 |     12 |         12 |          0 |         12 |         12 | 
 
-⏱️ Query times (sec):
+Query times (sec):
   BKTree: 122.63s
   HashNeighbor: 4.70s
   Trie: 91.38s
