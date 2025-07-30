@@ -1,3 +1,6 @@
 *.fasta
 *.pyc
 nmut_pdf
+test
+for_10000*
+mutation_rates.csv
