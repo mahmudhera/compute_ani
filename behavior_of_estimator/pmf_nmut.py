@@ -3,6 +3,7 @@ from scipy.special import hyp2f1
 import time
 from tqdm import tqdm
 import sys
+from scipy.stats import norm
 
 
 def r1_to_q(k,r1):
@@ -67,6 +68,21 @@ def get_nmut_pdf_modified(num_bases, k, p):
         next, curr = curr, next
     return np.sum(curr, axis=1)
 
+
+def get_nmut_pdf_using_normal_distribution(L, k, p):
+    mu = exp_n_mutated(L, k, p)
+    sigma = np.sqrt(var_n_mutated(L, k, p))
+    pdf = np.zeros(L + 1)
+    for i in range(L + 1):
+        # pdf[i] equals (CMF of Normal at i+0.5) - (CMF of Normal at i-0.5)
+        pdf[i] = norm.cdf(i + 0.5, loc=mu, scale=sigma) - norm.cdf(i - 0.5, loc=mu, scale=sigma)
+        
+    # normalize the pdf
+    pdf /= np.sum(pdf)
+    
+    return pdf
+
+
 if __name__ == '__main__':
     # take L, k, p as command line arguments
     if len(sys.argv) != 4:
@@ -105,3 +121,39 @@ if __name__ == '__main__':
     print('3rd moment from pdf:')
     expectation = sum( [i**3*pdf[i] for i in range(L+1)] )
     print(expectation)
+    
+    # compute expectation of (L - Nmut)^(1/k)
+    print('Expectation of (L - Nmut)^(1/k) from pdf:')
+    expectation1 = sum( [(L - i)**(1/k) * pdf[i] for i in range(L+1)] )
+    print (expectation1)
+    
+    print('------------------')
+    print('Investigating approximation of PMF using Normal pdf:')
+    pdf = get_nmut_pdf_using_normal_distribution(L, k, p)
+    print('Expectation from normal pdf:')
+    expectation = sum([i * pdf[i] for i in range(L + 1)])
+    print(expectation)
+    print('Expectation from formula:')
+    print(exp_n_mutated(L, k, p))
+    
+    print('Variance from normal pdf:')
+    variance = sum([i**2 * pdf[i] for i in range(L + 1)]) - expectation**2
+    print(variance)
+    print('Variance from formula:')
+    print(var_n_mutated(L, k, p))
+    
+    # 3rd moment
+    print('3rd moment from normal pdf:')
+    third_moment = sum([i**3 * pdf[i] for i in range(L + 1)])
+    print(third_moment)
+    print('3rd moment from formula:')
+    print(third_moment_nmut_exact(L, k, p))
+    
+    # expectation of (L - Nmut)^(1/k) from normal pdf
+    print('Expectation of (L - Nmut)^(1/k) from normal pdf:')
+    expectation1_normal = sum([(L - i)**(1/k) * pdf[i] for i in range(L + 1)])
+    print (expectation1_normal)
+    
+    
+    
+    

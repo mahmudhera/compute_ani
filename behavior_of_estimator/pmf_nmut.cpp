@@ -6,6 +6,66 @@
 #include <fstream>
 #include <string>
 
+#include <numeric>
+#include <cassert>
+
+
+// Convert r1 to q
+double r1_to_q(int k, double r1) {
+    return 1.0 - std::pow(1.0 - r1, k);
+}
+
+// Expected number of mutated positions
+double exp_n_mutated(int L, int k, double r1) {
+    double q = r1_to_q(k, r1);
+    return L * q;
+}
+
+// Variance of number of mutated positions
+double var_n_mutated(int L, int k, double r1, double q = -1.0) {
+    if (r1 == 0.0) return 0.0;
+
+    if (q < 0.0)
+        q = r1_to_q(k, r1);
+
+    double varN =
+        L * (1.0 - q) * (q * (2.0 * k + 2.0 / r1 - 1.0) - 2.0 * k)
+        + k * (k - 1.0) * std::pow(1.0 - q, 2)
+        + (2.0 * (1.0 - q) / (r1 * r1)) * ((1.0 + (k - 1.0) * (1.0 - q)) * r1 - q);
+
+    assert(varN >= 0.0);
+    return varN;
+}
+
+
+// Compute normal CDF
+double normal_cdf(double x, double mu, double sigma) {
+    return 0.5 * (1.0 + std::erf((x - mu) / (sigma * std::sqrt(2.0))));
+}
+
+
+// Main PDF approximation function
+std::vector<double> get_nmut_pdf_using_normal_distribution(int L, int k, double r1) {
+    double mu = exp_n_mutated(L, k, r1);
+    double sigma = std::sqrt(var_n_mutated(L, k, r1));
+
+    std::vector<double> pdf(L + 1, 0.0);
+    for (int i = 0; i <= L; ++i) {
+        double upper = normal_cdf(i + 0.5, mu, sigma);
+        double lower = normal_cdf(i - 0.5, mu, sigma);
+        pdf[i] = upper - lower;
+    }
+
+    // Normalize
+    double sum = std::accumulate(pdf.begin(), pdf.end(), 0.0);
+    if (sum > 0.0) {
+        for (double& val : pdf) val /= sum;
+    }
+
+    return pdf;
+}
+
+
 // Function to initialize the first two rows like perform_exhaustive_counting_modified
 std::vector<std::vector<double>> perform_exhaustive_counting_modified(int k, double p) {
     std::vector<std::vector<double>> arr(2, std::vector<double>(k + 1, 0.0));
@@ -35,6 +95,7 @@ std::vector<double> get_nmut_pdf_modified(int L, int k, double p) {
 
         // Compute row sums
         std::vector<double> row_sums(L + 1, 0.0);
+
         for (int i = 0; i <= L; ++i)
             for (int z = 0; z <= k; ++z)
                 row_sums[i] += curr[i][z];
@@ -55,6 +116,7 @@ std::vector<double> get_nmut_pdf_modified(int L, int k, double p) {
 
     // Sum over last buffer
     std::vector<double> result(L + 1, 0.0);
+
     for (int x = 0; x <= L; ++x)
         for (int z = 0; z <= k; ++z)
             result[x] += buffers[curr_idx][x][z];
@@ -63,6 +125,9 @@ std::vector<double> get_nmut_pdf_modified(int L, int k, double p) {
 }
 
 int main(int argc, char* argv[]) {
+
+    std::cout << "This program computes expectation of L-Nmut raised to power of 1/k\n";
+
     if (argc != 5) {
         std::cerr << "Usage: ./nmut_pdf L k p output_filename\n";
         return 1;
@@ -75,9 +140,9 @@ int main(int argc, char* argv[]) {
 
     // show the arguments
     std::cout << "Arguments:\n";
-    std::cout << "L = " << L << "\n";
-    std::cout << "k = " << k << "\n";
-    std::cout << "p = " << p << "\n";
+    std::cout << "L = " << L << ", ";
+    std::cout << "k = " << k << ", ";
+    std::cout << "p = " << p << ".\n";
     std::cout << "Output filename = " << output_filename << "\n";
 
     // Validate arguments
@@ -91,12 +156,13 @@ int main(int argc, char* argv[]) {
     std::cout << "PMF has been computed.\n";
     std::cout << std::fixed << std::setprecision(6);
 
-    // compute expectation of X^(1/k) from the PMF
+    // compute expectation of (L-Nmut)^(1/k) from the PMF
     double expectation = 0.0;
     for (int i = 0; i <= L; ++i) {
-        expectation += result[i] * pow(i, 1.0 / k);
+        expectation += result[i] * pow(L-i, 1.0 / k);
     }
-    std::cout << "Expectation = " << expectation << "\n";
+    // Print the expectation
+    std::cout << "Expectation using exhaustive PMF computation = " << expectation << "\n";
 
     // Write the PMF to the output file
     std::ofstream output_file(output_filename);
@@ -105,11 +171,28 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // write the expectation of X^(1/k) to the output file
+    // write the expectation of (L-Nmut)^(1/k) to the output file
     output_file << expectation << "\n";
 
     // close the output file
     output_file.close();
+
+
+    // compute the PMF using normal distribution approximation
+    std::vector<double> pdf_normal = get_nmut_pdf_using_normal_distribution(L, k, p);
+    std::cout << "PMF using normal distribution approximation has been computed.\n";
+
+    // show sum of PMF
+    double sum_normal = std::accumulate(pdf_normal.begin(), pdf_normal.end(), 0.0);
+    std::cout << "Sum of PMF using normal distribution approximation = " << sum_normal << "\n";
+
+    // compute expectation of (L-Nmut)^(1/k) from the PMF
+    double expectation_normal = 0.0;
+    for (int i = 0; i <= L; ++i) {
+        expectation_normal += pdf_normal[i] * pow(L - i, 1.0 / k);
+    }
+    std::cout << "Expectation using normal approximation = " << expectation_normal << "\n";
+
 
     return 0;
 }
